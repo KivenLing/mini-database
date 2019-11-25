@@ -3,6 +3,7 @@
 #include "db.h"
 #include<fcntl.h>
 #include<pthread.h>
+#include<time.h>
 
 #define SELECT "select"
 #define UPDATE "update"
@@ -158,7 +159,7 @@ static void * sql_exec(void *arg)
             }
             else
             {
-                printf("insert error");
+                printf("insert error\n");
             }
         }
         else if (strcmp(UPDATE, sql_com->command) == 0)
@@ -230,7 +231,7 @@ int db_client()
         {
             break;
         }
-        ssize_t wsz = write(pfd[1], buf, LINELEN);
+        write(pfd[1], buf, LINELEN);
     }
     
     close(pfd[1]);
@@ -250,6 +251,12 @@ int db_client()
 
 int main(int argc, char const *argv[])
 {
+    clock_t start_time,finish_time;
+    double total_time;
+    start_time = clock();
     db_client();
+    finish_time = clock();
+    total_time = ((double)(finish_time-start_time)) / CLOCKS_PER_SEC;
+    printf( "%f seconds\n", total_time);
     return 0;
 }
