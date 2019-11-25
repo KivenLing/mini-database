@@ -33,6 +33,9 @@
 #define IDX_FILE_FLAG (O_RDWR | O_CREAT)
 #define DAT_FILE_FLAG (O_RDWR | O_CREAT | O_APPEND)
 
+static pthread_mutex_t bplus_tree_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t dat_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 struct DB
 {
     int datfd;
@@ -102,6 +105,25 @@ static char *_buf_cpy(char *buf, int start, int len)
     }
     cpystr[i] = '\0';
     return cpystr;
+}
+
+/*
+ * 将str复制到buf[start, start + len], 剩余填充fill
+ */
+static void _str_fill_buf(char* buf, char* str, int start, int len, char fill)
+{
+    int strlen = strlen(str);
+    int i = 0;
+    while (i < strlen && i < len)
+    {
+        buf[start + i] = str[i];
+        i++;
+    }
+    while (i < len)
+    {
+        buf[start + i] = fill;
+        i++;
+    }
 }
 
 /*
@@ -257,4 +279,146 @@ void db_close(DBHANDLE _db)
     struct DB *db = (struct DB *)_db;
     _tree_to_file(db);
     _db_free(db);
+}
+
+/*
+ * 通过索引查找内容, 内容拷贝到buf中
+ * 没有查到内容返回-1
+ */
+int db_select(DBHANDLE _db, char* idx, char* buf)
+{
+    if (idx == NULL)
+        return -1;
+    struct DB* db = (struct DB*)_db;
+    struct bplus_tree* tree = db->tree;
+    int _idx = atoi(idx);
+    int dat_off;
+    int readlen;
+    pthread_mutex_lock(&bplus_tree_mutex);
+    dat_off = bplus_tree_get(tree, _idx);
+    pthread_mutex_unlock(&bplus_tree_mutex);
+    if (dat_off < 0) /* 不存在该索引 */
+        return -1;
+    pthread_mutex_lock(&dat_file_mutex);
+    readlen = pread(db->datfd, buf, DAT_LEN, dat_off);
+    pthread_mutex_unlock(&dat_file_mutex);
+    if (readlen < 0)
+    {
+        err_dump("select: read error");
+        return -1;
+    }
+    return 1;
+}
+
+/*
+ * 向数据库插入数据
+ */
+int db_insert(DBHANDLE _db, char* idx, char* data)
+{
+    if (idx == NULL || data == NULL)
+        return -1;
+    struct DB* db = (struct DB*)_db;
+    struct bplus_tree* tree = db->tree;
+    int _idx = atoi(idx);
+    int writelen = -1;
+    int datoff;
+    /* 准备好写入字符串 */
+    char buf[DAT_LEN];
+    _str_fill_buf(buf, idx, 0, IDX_LEN, SAPCE);
+    buf[IDX_LEN] = SEP;
+    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2);
+    buf[DAT_LEN - 1] = NEWLINE;
+    /*
+     * 1. 查询索引
+     * 2. 写入数据
+     * 3. 写入索引 
+     */
+    pthread_mutex_lock(&bplus_tree_mutex);
+    datoff = bplus_tree_get(tree, _idx);
+    if (datoff >= 0)/* 记录存在 */
+    {
+        pthread_mutex_unlock(&bplus_tree_mutex);
+        return -1;
+    }
+    pthread_mutex_lock(&dat_file_mutex);
+    datoff = db->cur_off;
+    writelen = pwrite(db->datfd, buf, DAT_LEN, datoff);
+    if (writelen != DAT_LEN)
+    {
+        pthread_mutex_unlock(&dat_file_mutex);
+        err_sys("db_insert: write error");
+        return -1;
+    }
+    db->cur_off = datoff + DAT_LEN;
+    pthread_mutex_unlock(&dat_file_mutex);
+    bplus_tree_put(tree, _idx, datoff);
+    pthread_mutex_unlock(&bplus_tree_mutex);
+    return 1;
+}
+/*
+ * 更新数据记录 
+ */
+int db_update(DBHANDLE _db, char* idx, char* data)
+{
+    if (idx == NULL || data == NULL)
+        return -1;
+    struct DB* db = (struct DB*)_db;
+    struct bplus_tree* tree = db->tree;
+    int _idx = atoi(idx);
+    int writelen = -1;
+    int datoff;
+    /* 准备好写入字符串 */
+    char buf[DAT_LEN];
+    _str_fill_buf(buf, idx, 0, IDX_LEN, SAPCE);
+    buf[IDX_LEN] = SEP;
+    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2);
+    buf[DAT_LEN - 1] = NEWLINE;
+    /*
+     * 1. 查询索引
+     * 2. 写入数据
+     */
+    pthread_mutex_lock(&bplus_tree_mutex);
+    datoff = bplus_tree_get(tree, _idx);
+    pthread_mutex_unlock(&bplus_tree_mutex);
+    if (datoff < 0)/* 记录不存在 */
+    {
+        return -1;
+    }
+    writelen = pwrite(db->datfd, buf, DAT_LEN, datoff);
+    if (writelen != DAT_LEN)
+    {
+        err_sys("db_update: write error");
+        return -1;
+    }
+    return 1;
+}
+
+/*
+ * 删除数据记录，将那条记录置为空格 
+ */
+int db_delete(DBHANDLE _db, char* idx)
+{
+    if (idx == NULL)
+        return -1;
+    struct DB* db = (struct DB*)_db;
+    struct bplus_tree* tree = db->tree;
+    int _idx = atoi(idx);
+    int datoff;
+    char buf[DAT_LEN];
+    _str_fill_buf(buf, " ", 0, DAT_LEN - 1, SAPCE);
+    buf[DAT_LEN - 1] = NEWLINE
+    pthread_mutex_lock(&bplus_tree_mutex);
+    datoff = bplus_tree_get(tree, _idx);
+    pthread_mutex_unlock(&bplus_tree_mutex);
+    if (datoff < 0)/* 记录不存在 */
+    {
+        return -1;
+    }
+    writelen = pwrite(db->datfd, buf, DAT_LEN, datoff);
+    if (writelen != DAT_LEN)
+    {
+        err_sys("db_delete: write error");
+        return -1;
+    }
+    return 1;
 }

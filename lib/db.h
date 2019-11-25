@@ -5,9 +5,9 @@ typedef void* DBHANDLE;
 
 DBHANDLE db_open();
 void db_close(DBHANDLE _db);
-int select(DBHANDLE _db, char* idx);
-int insert(DBHANDLE _db, char* idx, char* data);
-int update(DBHANDLE _db, char* idx, char* data);
-int delete(DBHANDLE _db, char* idx);
+int db_select(DBHANDLE _db, char* idx, char* buf);
+int db_insert(DBHANDLE _db, char* idx, char* data);
+int db_update(DBHANDLE _db, char* idx, char* data);
+int db_delete(DBHANDLE _db, char* idx);
 
 #endif
