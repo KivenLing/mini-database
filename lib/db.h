@@ -1,6 +1,8 @@
 #ifndef DB_H
 #define DB_H
 
+#define IDX_LEN 8
+#define DAT_LEN 64
 typedef void* DBHANDLE;
 
 DBHANDLE db_open();

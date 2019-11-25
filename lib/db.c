@@ -7,7 +7,7 @@
 
 /* 基本符号 */
 #define SEP ':'
-#define SAPCE ' '
+#define SPASE ' '
 #define NEWLINE '\n'
 
 #define DB_NAME "apue"
@@ -51,13 +51,13 @@ struct DB
 static struct DB *_db_alloc(int namelen)
 {
     struct DB *db = calloc(1, sizeof(struct DB));
-    if (db = NULL)
+    if (db == NULL)
     {
         err_dump("_db_alloc: calloc error");
     }
     db->datfd = db->idxfd = -1;
     db->cur_off = -1;
-    if ((db->name = malloc(namelen + 1)) == NULL)
+    if ((db->name = (char *)malloc(namelen + 1)) == NULL)
     {
         err_dump("_db_alloc: malloc error");
     }
@@ -95,7 +95,7 @@ static void _db_free(struct DB *db)
 static char *_buf_cpy(char *buf, int start, int len)
 {
     /* 保证buf复制不越界 */
-    assert(strlen(buf) > start + len);
+    assert(strlen(buf) >= start + len);
 
     char *cpystr = (char *)malloc(len + 1);
     int i;
@@ -110,11 +110,11 @@ static char *_buf_cpy(char *buf, int start, int len)
 /*
  * 将str复制到buf[start, start + len], 剩余填充fill
  */
-static void _str_fill_buf(char* buf, char* str, int start, int len, char fill)
+static void _str_fill_buf(char *buf, char *str, int start, int len, char fill)
 {
-    int strlen = strlen(str);
+    int str_len = strlen(str);
     int i = 0;
-    while (i < strlen && i < len)
+    while (i < str_len && i < len)
     {
         buf[start + i] = str[i];
         i++;
@@ -183,7 +183,7 @@ static void _file_to_tree(struct DB *db)
     while ((readlen = pread(db->idxfd, buf, MAXLINE, MAXLINE * block_num)) > 0)
     {
         kv_num = readlen / IDX_DAT_LEN;
-        for (idx_in_block = 0; idx_in_block <= kv_num; idx_in_block++)
+        for (idx_in_block = 0; idx_in_block < kv_num; idx_in_block++)
         {
             key_t key = _buf_to_int(buf, IDX_DAT_LEN * idx_in_block, IDX_LEN);
             /* 第 9 - 30 是记录off */
@@ -197,19 +197,19 @@ static void _file_to_tree(struct DB *db)
 /*
  * 将叶子节点写入索引文件
  */
-static int _tree_leaf_to_file(struct DB* db, struct bplus_leaf* leaf)
+static int _tree_leaf_to_file(struct DB *db, struct bplus_leaf *leaf)
 {
     if (leaf == NULL)
-        return;
+        return 1;
     int count = leaf->entries;
     char buf[IDX_DAT_LEN * count];
     for (int i = 0; i < count; i++)
     {
         int k = leaf->key[i];
         int v = leaf->data[i];
-        _int_to_buf(buf, k, IDX_DAT_LEN * i, IDX_LEN, SAPCE);
+        _int_to_buf(buf, k, IDX_DAT_LEN * i, IDX_LEN, SPASE);
         buf[IDX_DAT_LEN * i + IDX_LEN] = SEP;
-        _int_to_buf(buf, IDX_DAT_LEN * i + IDX_LEN + 1, IDX_DAT_LEN - IDX_LEN - 2, SAPCE);
+        _int_to_buf(buf, v, IDX_DAT_LEN * i + IDX_LEN + 1, IDX_DAT_LEN - IDX_LEN - 2, SPASE);
         buf[IDX_DAT_LEN * (i + 1) - 1] = NEWLINE;
     }
     if (write(db->idxfd, buf, IDX_DAT_LEN * count) < 0)
@@ -226,10 +226,10 @@ static int _tree_leaf_to_file(struct DB* db, struct bplus_leaf* leaf)
  * 2. 将k, v转换字符串，写入索引文件
  * 问题：这里用的方法效率较低, 原因是每次写入量小(主要)，单线程
  */
-static void _tree_to_file(struct DB* db)
+static void _tree_to_file(struct DB *db)
 {
-    struct bplus_leaf* first = first_leaf_node(db->tree);
-    struct bplus_leaf* last = last_leaf_node(db->tree);
+    struct bplus_leaf *first = first_leaf_node(db->tree);
+    struct bplus_leaf *last = last_leaf_node(db->tree);
     while (first != last)
     {
         _tree_leaf_to_file(db, first);
@@ -285,12 +285,12 @@ void db_close(DBHANDLE _db)
  * 通过索引查找内容, 内容拷贝到buf中
  * 没有查到内容返回-1
  */
-int db_select(DBHANDLE _db, char* idx, char* buf)
+int db_select(DBHANDLE _db, char *idx, char *buf)
 {
     if (idx == NULL)
         return -1;
-    struct DB* db = (struct DB*)_db;
-    struct bplus_tree* tree = db->tree;
+    struct DB *db = (struct DB *)_db;
+    struct bplus_tree *tree = db->tree;
     int _idx = atoi(idx);
     int dat_off;
     int readlen;
@@ -313,20 +313,20 @@ int db_select(DBHANDLE _db, char* idx, char* buf)
 /*
  * 向数据库插入数据
  */
-int db_insert(DBHANDLE _db, char* idx, char* data)
+int db_insert(DBHANDLE _db, char *idx, char *data)
 {
     if (idx == NULL || data == NULL)
         return -1;
-    struct DB* db = (struct DB*)_db;
-    struct bplus_tree* tree = db->tree;
+    struct DB *db = (struct DB *)_db;
+    struct bplus_tree *tree = db->tree;
     int _idx = atoi(idx);
     int writelen = -1;
     int datoff;
     /* 准备好写入字符串 */
     char buf[DAT_LEN];
-    _str_fill_buf(buf, idx, 0, IDX_LEN, SAPCE);
+    _str_fill_buf(buf, idx, 0, IDX_LEN, SPASE);
     buf[IDX_LEN] = SEP;
-    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2);
+    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2, SPASE);
     buf[DAT_LEN - 1] = NEWLINE;
     /*
      * 1. 查询索引
@@ -335,7 +335,7 @@ int db_insert(DBHANDLE _db, char* idx, char* data)
      */
     pthread_mutex_lock(&bplus_tree_mutex);
     datoff = bplus_tree_get(tree, _idx);
-    if (datoff >= 0)/* 记录存在 */
+    if (datoff >= 0) /* 记录存在 */
     {
         pthread_mutex_unlock(&bplus_tree_mutex);
         return -1;
@@ -358,20 +358,20 @@ int db_insert(DBHANDLE _db, char* idx, char* data)
 /*
  * 更新数据记录 
  */
-int db_update(DBHANDLE _db, char* idx, char* data)
+int db_update(DBHANDLE _db, char *idx, char *data)
 {
     if (idx == NULL || data == NULL)
         return -1;
-    struct DB* db = (struct DB*)_db;
-    struct bplus_tree* tree = db->tree;
+    struct DB *db = (struct DB *)_db;
+    struct bplus_tree *tree = db->tree;
     int _idx = atoi(idx);
     int writelen = -1;
     int datoff;
     /* 准备好写入字符串 */
     char buf[DAT_LEN];
-    _str_fill_buf(buf, idx, 0, IDX_LEN, SAPCE);
+    _str_fill_buf(buf, idx, 0, IDX_LEN, SPASE);
     buf[IDX_LEN] = SEP;
-    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2);
+    _str_fill_buf(buf, data, IDX_LEN + 1, DAT_LEN - IDX_LEN - 2, SPASE);
     buf[DAT_LEN - 1] = NEWLINE;
     /*
      * 1. 查询索引
@@ -380,7 +380,7 @@ int db_update(DBHANDLE _db, char* idx, char* data)
     pthread_mutex_lock(&bplus_tree_mutex);
     datoff = bplus_tree_get(tree, _idx);
     pthread_mutex_unlock(&bplus_tree_mutex);
-    if (datoff < 0)/* 记录不存在 */
+    if (datoff < 0) /* 记录不存在 */
     {
         return -1;
     }
@@ -396,21 +396,22 @@ int db_update(DBHANDLE _db, char* idx, char* data)
 /*
  * 删除数据记录，将那条记录置为空格 
  */
-int db_delete(DBHANDLE _db, char* idx)
+int db_delete(DBHANDLE _db, char *idx)
 {
     if (idx == NULL)
         return -1;
-    struct DB* db = (struct DB*)_db;
-    struct bplus_tree* tree = db->tree;
+    struct DB *db = (struct DB *)_db;
+    struct bplus_tree *tree = db->tree;
+    int writelen;
     int _idx = atoi(idx);
     int datoff;
     char buf[DAT_LEN];
-    _str_fill_buf(buf, " ", 0, DAT_LEN - 1, SAPCE);
-    buf[DAT_LEN - 1] = NEWLINE
+    _str_fill_buf(buf, " ", 0, DAT_LEN - 1, SPASE);
+    buf[DAT_LEN - 1] = NEWLINE;
     pthread_mutex_lock(&bplus_tree_mutex);
     datoff = bplus_tree_get(tree, _idx);
     pthread_mutex_unlock(&bplus_tree_mutex);
-    if (datoff < 0)/* 记录不存在 */
+    if (datoff < 0) /* 记录不存在 */
     {
         return -1;
     }

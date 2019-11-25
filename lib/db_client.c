@@ -115,102 +115,94 @@ static void * sql_exec(void *arg)
         {
             break;
         }
-        printf("n = %d\n", n);
-        printf("sql = %s\n", sql);
         sql_com = parser(sql);
-        // printf("comand = %s\n", sql_com->command);
-        // for (int i = 0; sql_com->args[i] != NULL && i < SQLARGC; i++)
-        // {
-        //     printf("arg[%d] = %s\n", i, sql_com->args[i]);
-        // }
-        // if (sql_com->args == NULL)
-        // {
-        //     printf("command error!\n");
-        //     printf("usage: slelct|insert|delete|update key [data]\n");
-        //     free(sql_com);
-        //     continue;
-        // }
-        // if (strlen(sql_com->args[0]) > IDX_LEN) /* 检查key范围 */
-        // {
-        //     printf("key = %s too big\n", sql_com->args[0]);
-        //     free(sql_com);
-        //     continue;
-        // }
-        // if (strcmp(SELECT, sql_com->command) == 0)
-        // {
-        //     char* data = (char*)malloc(DAT_LEN + 1);
-        //     data[DAT_LEN] = '\0';
-        //     res = db_select(_db_server, sql_com->args[0], data);
-        //     if (res < 0)
-        //     {
-        //         printf("no data for key = %s\n", sql_com->args[0]);
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     printf("key     :data\n");
-        //     printf("%s",data);
-        //     free(data);
-        // }
-        // else if (strcmp(INSERT, sql_com->command) == 0)
-        // {
-        //     if (sql_com->args[1] == NULL)
-        //     {
-        //         printf("usage: insert key data\n");
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     res = db_insert(_db_server, sql_com->args[0], sql_com->args[1]);
-        //     if (res < 0)
-        //     {
-        //         printf("insert error");
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     printf("insert ok\n");
-        // }
-        // else if (strcmp(UPDATE, sql_com->command) == 0)
-        // {
-        //     if (sql_com->args[1] == NULL)
-        //     {
-        //         printf("usage: update key data\n");
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     res = db_update(_db_server, sql_com->args[0], sql_com->args[1]);
-        //     if (res < 0)
-        //     {
-        //         printf("update error\n");
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     printf("update ok\n");
-        // }
-        // else if (strcmp(DELETE, sql_com->command) == 0)
-        // {
-        //     res = db_delete(_db_server, sql_com->args[0]);
-        //     if (res < 0)
-        //     {
-        //         printf("no data for key = %s\n", sql_com->args[0]);
-        //         free(sql_com);
-        //         continue;
-        //     }
-        //     printf("update ok\n");
-        // }
-        // else
-        // {
-        //     printf("command error!\n");
-        //     printf("usage: slelct|insert|delete|update key [data]\n");
-        // }
-        printf("free begin\n");
+        if (sql_com == NULL || sql_com->arg1 == NULL)
+        {
+            printf("command error! usage: slelct|insert|delete|update key [data]\n");
+            free(sql_com);
+            continue;
+        }
+        if (strlen(sql_com->arg1) > IDX_LEN) /* 检查key范围 */
+        {
+            printf("key = %s too big\n", sql_com->arg1);
+            free(sql_com);
+            continue;
+        }
+        else if (strcmp(SELECT, sql_com->command) == 0)
+        {
+            char* data = (char*)malloc(DAT_LEN + 1);
+            data[DAT_LEN] = '\0';
+            res = db_select(_db_server, sql_com->arg1, data);
+            if (res > 0)
+            {
+                printf("key     :data\n%s",data);
+            }
+            else
+            {
+                printf("no data for key = %s\n", sql_com->arg1);
+            }
+            free(data);
+        }
+        else if (strcmp(INSERT, sql_com->command) == 0)
+        {
+            if (sql_com->arg2 == NULL)
+            {
+                printf("usage: insert key data\n");
+                free(sql_com);
+                continue;
+            }
+            res = db_insert(_db_server, sql_com->arg1, sql_com->arg2);
+            if (res > 0)
+            {
+                printf("insert ok\n");
+            }
+            else
+            {
+                printf("insert error");
+            }
+        }
+        else if (strcmp(UPDATE, sql_com->command) == 0)
+        {
+            if (sql_com->arg2 == NULL)
+            {
+                printf("usage: update key data\n");
+                free(sql_com);
+                continue;
+            }
+            res = db_update(_db_server, sql_com->arg1, sql_com->arg2);
+            if (res > 0)
+            {
+                printf("update ok\n");
+            }
+            else
+            {
+                printf("update error\n");
+            }
+        }
+        else if (strcmp(DELETE, sql_com->command) == 0)
+        {
+            res = db_delete(_db_server, sql_com->arg1);
+            if (res > 0)
+            {
+                printf("update ok\n");
+            }
+            else
+            {
+                printf("no data for key = %s\n", sql_com->arg1);
+            }
+        }
+        else
+        {
+            printf("command error! usage: slelct|insert|delete|update key [data]\n");
+        }
         free(sql_com);
-        printf("free ok!\n");
     }
     pthread_exit((void *)0);
 }
 
 int db_client()
 {
-    //_db_server = db_open();
+    _db_server = db_open();
     int i, err;
     pthread_t wtid[NTHREAD];
     char buf[LINELEN];
@@ -234,9 +226,11 @@ int db_client()
     /* 从终端读取命令， 测试可以重定向到一个文件, 单生产者*/
     while (fgets(buf, LINELEN, stdin))
     {
-        printf("buf = %s\n", buf);
+        if (strncmp(buf, "quit", strlen(buf) - 1) == 0)
+        {
+            break;
+        }
         ssize_t wsz = write(pfd[1], buf, LINELEN);
-        printf("wsz = %ld\n", wsz);
     }
     
     close(pfd[1]);
@@ -250,7 +244,7 @@ int db_client()
 		}
 	}
 	close(pfd[0]);
-    //db_close(_db_server);
+    db_close(_db_server);
     return 0;
 }
 
